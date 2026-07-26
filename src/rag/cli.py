@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
                 for row, vector in zip(batch, vectors):
                     con.execute(
                         "INSERT INTO chunks_vec(chunk_id,embedding) VALUES (?,?)",
-                        (row["id"], struct.pack(f"{len(vector)}f", *vector)),
+                        (row["id"], pack_vector(vector)),
                     )
             con.commit()
             print(f"re-embedded {len(rows)} chunks")
