@@ -187,6 +187,49 @@ no sweep.
 - **Not measured:** per-document diversity (one long note can still dominate the
   result set) and any relevance floor. Both remain open in `FOLLOWUPS.md`.
 
+## When your real corpus lands — the revisit checklist
+
+Everything below was measured on 156 chunks of this project's own documentation.
+None of it automatically transfers. In rough priority order:
+
+**1. Re-run the sweep. `arm_depth` almost certainly needs to move.**
+10 candidates is 6% of a 156-chunk corpus and 0.05% of a 20,000-chunk one. The
+mechanism that made 10 right — truncating away IDF-worthless matches — does not
+fix an absolute number to it. Run `eval/sweep.py` and read the depth column.
+
+**2. Write 20-30 questions from your own notes, and verify them.**
+Replace `eval/questions.yaml` wholesale. Keep the three `kind` tags — `vocab`,
+`exact`, `natural` — because per-arm behaviour is only legible when questions
+are grouped by what they should exercise. `evaluate()` raises if a phrase does
+not resolve, so a bad question fails loudly rather than shrinking the sample.
+
+**3. Decide `arm_depth` 5 vs 10 against your actual consumer.**
+If retrieval only ever feeds the top 3-5 chunks into a prompt, 5 measured better
+here. If results get paged through or the caller wants headroom, 10. This is a
+consumer question, not a corpus question, and `RAG_ARM_DEPTH` needs no code
+change either way.
+
+**4. Then decide on per-document diversity.**
+One long note took 9 of 10 result slots in testing. On a corpus with a handful
+of very long documents this will bite; on many short notes it may never. Measure
+before building — and note the eval harness cannot see it, because scoring stops
+at the first correct chunk.
+
+**5. Then decide on a relevance floor.**
+The dense arm returns nearest neighbours unconditionally, so an out-of-domain
+question still gets confident-looking results. Whether that matters depends on
+whether anything downstream acts on low-quality retrieval. Surfacing raw vector
+distance on `Hit` is the enabling change; picking a threshold needs your data.
+
+**6. Re-test the embedding model.**
+`docs/../README` records why 0.6B over 4B: quality gain unproven on *your* data
+and ~7x the CPU cost. Once real questions exist, `RAG_EMBED_MODEL` plus
+`rag rebuild-vectors` makes that a measurement rather than a guess. Also
+re-test `heading_path` embedding (Result 4) if your notes are heading-dense.
+
+**What does not need revisiting:** the OR join (AND was catastrophic by a wide
+margin, 0.154 vs 0.464), and `rrf_k` (flat for k >= 10 and not the lever).
+
 ## Reconstructing the measurement corpus
 
 The corpus is 8 documents copied out of the two repositories, so it is
