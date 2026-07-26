@@ -12,7 +12,10 @@ from dataclasses import dataclass
 from .config import Settings
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
-_FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+# Captures the fence run (backticks or tildes, 3+) and whatever trails it on
+# the line, so the caller can enforce CommonMark's closing rule: same
+# character, run at least as long as the opener, nothing but whitespace after.
+_FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
 
 
 @dataclass(frozen=True)
@@ -37,24 +40,45 @@ def chunk_text(text: str, settings: Settings) -> list[Chunk]:
 def _split_sections(text: str) -> list[tuple[str, str]]:
     """Walk headings, tracking the active path at each level.
 
-    Fenced code blocks (``` or ~~~) are tracked as a toggle so a `#` shell
-    comment inside a fence is never mistaken for a heading boundary — without
-    this, a line-by-line scan rewrites heading_path for the rest of the
-    document on every fenced `#` comment it sees, which is the common case
-    for notes full of shell snippets, not an edge case.
+    Fenced code blocks (``` or ~~~) are tracked so a `#` shell comment inside
+    a fence is never mistaken for a heading boundary — without this, a
+    line-by-line scan rewrites heading_path for the rest of the document on
+    every fenced `#` comment it sees, which is the common case for notes full
+    of shell snippets, not an edge case.
+
+    The fence match/close follows CommonMark: a closing fence must use the
+    SAME character as the opener and be at least as LONG. Tracking this as a
+    plain toggle (any fence-looking line flips it) is wrong two ways: a ~~~
+    line inside a ``` block would close it early, and a ``` line inside a
+    ```` block would too. An unterminated fence swallowing the rest of the
+    document is correct per CommonMark and is exactly what falling off the
+    end of the loop with fence_char still set does here.
     """
     sections: list[tuple[str, str]] = []
     stack: list[str] = []
     buf: list[str] = []
     path = ""
-    in_fence = False
+    fence_char: str | None = None
+    fence_len = 0
 
     for line in text.splitlines():
-        if _FENCE.match(line):
-            in_fence = not in_fence
+        m = _FENCE.match(line)
+        if fence_char is None:
+            if m:
+                fence_char, fence_len = m.group(1)[0], len(m.group(1))
+                buf.append(line)
+                continue
+        else:
+            if (
+                m
+                and m.group(1)[0] == fence_char
+                and len(m.group(1)) >= fence_len
+                and not m.group(2).strip()
+            ):
+                fence_char, fence_len = None, 0
             buf.append(line)
             continue
-        if not in_fence and (m := _HEADING.match(line)):
+        if (m := _HEADING.match(line)):
             if buf:
                 sections.append((path, "\n".join(buf)))
                 buf = []

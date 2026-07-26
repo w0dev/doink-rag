@@ -92,3 +92,71 @@ def test_fenced_code_comments_are_not_parsed_as_headings():
     # the fenced content itself must still be present verbatim in some chunk
     assert any("echo hi" in c.text for c in chunks)
     assert any("more text after the fence" in c.text for c in chunks)
+
+
+def test_mismatched_fence_delimiter_does_not_close_a_fence_early():
+    # CommonMark closing fences must use the SAME character as the opener.
+    # A ~~~ line inside a ``` block is just content, not a delimiter -- a
+    # tracker that toggles on any fence character closes here early and
+    # reads the following '#' line as a real heading.
+    text = (
+        "# Real Heading\n"
+        "\n"
+        "```bash\n"
+        "echo hi\n"
+        "~~~ this looks like a fence but is a different character\n"
+        "# not a heading -- still inside the backtick fence\n"
+        "```\n"
+        "\n"
+        "after the fence\n"
+    )
+    chunks = chunk_text(text, S)
+    paths = {c.heading_path for c in chunks}
+    assert paths == {"Real Heading"}, (
+        f"a mismatched-character fence line must not close the fence, got {paths}"
+    )
+    assert any("not a heading" in c.text for c in chunks)
+    assert any("after the fence" in c.text for c in chunks)
+
+
+def test_shorter_fence_does_not_close_a_longer_opening_fence():
+    # CommonMark closing fences must be at least as long as the opener. A
+    # ```` (4-backtick) block containing a plain ``` (3-backtick) line must
+    # not close on that shorter run.
+    text = (
+        "# Heading Two\n"
+        "\n"
+        "````text\n"
+        "some content\n"
+        "```\n"
+        "# phantom heading if the fence closed early\n"
+        "````\n"
+        "\n"
+        "after the fence\n"
+    )
+    chunks = chunk_text(text, S)
+    paths = {c.heading_path for c in chunks}
+    assert paths == {"Heading Two"}, (
+        f"a shorter same-character fence line must not close a longer opener, got {paths}"
+    )
+    assert any(
+        "phantom heading if the fence closed early" in c.text for c in chunks
+    )
+    assert any("after the fence" in c.text for c in chunks)
+
+
+def test_unterminated_fence_swallows_rest_of_document():
+    # Correct per CommonMark, and must stay that way: an opening fence with
+    # no matching close absorbs everything to end of document rather than
+    # letting a later '#' line escape back into being a heading.
+    text = (
+        "# Heading\n"
+        "\n"
+        "```bash\n"
+        "echo hi\n"
+        "# never closes\n"
+    )
+    chunks = chunk_text(text, S)
+    paths = {c.heading_path for c in chunks}
+    assert paths == {"Heading"}
+    assert any("never closes" in c.text for c in chunks)
