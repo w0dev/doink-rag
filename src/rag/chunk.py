@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from .config import Settings
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+_FENCE = re.compile(r"^\s{0,3}(```|~~~)")
 
 
 @dataclass(frozen=True)
@@ -34,14 +35,26 @@ def chunk_text(text: str, settings: Settings) -> list[Chunk]:
 
 
 def _split_sections(text: str) -> list[tuple[str, str]]:
-    """Walk headings, tracking the active path at each level."""
+    """Walk headings, tracking the active path at each level.
+
+    Fenced code blocks (``` or ~~~) are tracked as a toggle so a `#` shell
+    comment inside a fence is never mistaken for a heading boundary — without
+    this, a line-by-line scan rewrites heading_path for the rest of the
+    document on every fenced `#` comment it sees, which is the common case
+    for notes full of shell snippets, not an edge case.
+    """
     sections: list[tuple[str, str]] = []
     stack: list[str] = []
     buf: list[str] = []
     path = ""
+    in_fence = False
 
     for line in text.splitlines():
-        if m := _HEADING.match(line):
+        if _FENCE.match(line):
+            in_fence = not in_fence
+            buf.append(line)
+            continue
+        if not in_fence and (m := _HEADING.match(line)):
             if buf:
                 sections.append((path, "\n".join(buf)))
                 buf = []

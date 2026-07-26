@@ -64,3 +64,31 @@ def test_single_token_longer_than_budget_is_split():
     assert all(
         len(c.text) <= S.chunk_chars + S.chunk_overlap_chars for c in chunks
     )
+
+
+def test_fenced_code_comments_are_not_parsed_as_headings():
+    # Shell comments inside a fenced code block look exactly like markdown
+    # headings to a line-by-line scanner with no fence state. This is the
+    # dominant shape for personal technical notes full of shell snippets, not
+    # an edge case.
+    text = (
+        "# Real Heading\n"
+        "\n"
+        "intro text before the fence\n"
+        "\n"
+        "```bash\n"
+        "# this is a shell comment, not a heading\n"
+        "echo hi\n"
+        "## another comment that looks like an H2\n"
+        "```\n"
+        "\n"
+        "more text after the fence\n"
+    )
+    chunks = chunk_text(text, S)
+    paths = {c.heading_path for c in chunks}
+    assert paths == {"Real Heading"}, (
+        f"fenced '#' comments must not become heading paths, got {paths}"
+    )
+    # the fenced content itself must still be present verbatim in some chunk
+    assert any("echo hi" in c.text for c in chunks)
+    assert any("more text after the fence" in c.text for c in chunks)
