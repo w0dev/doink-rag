@@ -39,36 +39,50 @@ def _pack(vector: list[float]) -> bytes:
 
 def index_corpus(con: sqlite3.Connection, settings: Settings, embedder) -> IndexResult:
     result = IndexResult()
-    on_disk: dict[str, Path] = {
-        str(p.relative_to(settings.corpus_dir)): p
-        for p in sorted(settings.corpus_dir.rglob("*"))
-        if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES
-    }
-    known = {
-        row["path"]: (row["id"], row["content_hash"])
-        for row in con.execute("SELECT id, path, content_hash FROM documents")
-    }
+    # con is caller-supplied and may be a long-lived connection the CLI or the
+    # upload endpoint keeps reusing. If extract/chunk/embed raises partway
+    # through the loop, the transaction must be rolled back here rather than
+    # left open: otherwise a later, unrelated commit() on the same connection
+    # would silently persist this run's partial inserts.
+    try:
+        on_disk: dict[str, Path] = {
+            str(p.relative_to(settings.corpus_dir)): p
+            for p in sorted(settings.corpus_dir.rglob("*"))
+            if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES
+        }
+        known = {
+            row["path"]: (row["id"], row["content_hash"])
+            for row in con.execute("SELECT id, path, content_hash FROM documents")
+        }
 
-    for rel, path in on_disk.items():
-        digest = _hash(path)
-        if rel in known and known[rel][1] == digest:
-            result.unchanged += 1
-            continue
-        if rel in known:
-            # Delete and reinsert rather than diff chunks: content changed, so
-            # chunk boundaries may have moved and old chunks are meaningless.
-            con.execute("DELETE FROM documents WHERE id=?", (known[rel][0],))
-            result.updated += 1
-        else:
-            result.added += 1
-        _index_file(con, settings, embedder, rel, path, digest)
+        for rel, path in on_disk.items():
+            digest = _hash(path)
+            if rel in known and known[rel][1] == digest:
+                result.unchanged += 1
+                continue
+            if rel in known:
+                # Delete and reinsert rather than diff chunks: content changed,
+                # so chunk boundaries may have moved and old chunks are
+                # meaningless.
+                con.execute("DELETE FROM documents WHERE id=?", (known[rel][0],))
+                result.updated += 1
+            else:
+                result.added += 1
+            _index_file(con, settings, embedder, rel, path, digest)
 
-    for rel, (doc_id, _) in known.items():
-        if rel not in on_disk:
-            con.execute("DELETE FROM documents WHERE id=?", (doc_id,))
-            result.removed += 1
+        for rel, (doc_id, _) in known.items():
+            if rel not in on_disk:
+                con.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+                result.removed += 1
 
-    con.commit()
+        con.commit()
+    except Exception:
+        # All-or-nothing: a failing run leaves no trace, not a partial
+        # document with no chunks that would then block re-indexing that
+        # same path on the next run via the path UNIQUE constraint.
+        con.rollback()
+        raise
+
     return result
 
 

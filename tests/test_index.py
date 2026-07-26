@@ -77,3 +77,33 @@ def test_unsupported_files_are_skipped(env):
     (corpus / "a.md").write_text("# A\n\nyes\n")
     r = index_corpus(con, s, FakeEmbedder())
     assert r.added == 1
+
+
+class FailingEmbedder:
+    """Succeeds for the first `fail_after` files, then raises -- simulating a
+    real embedding server timing out or rate-limiting partway through a
+    multi-file corpus."""
+    def __init__(self, fail_after=1):
+        self.calls = 0
+        self.fail_after = fail_after
+
+    def embed_documents(self, texts):
+        self.calls += 1
+        if self.calls > self.fail_after:
+            raise RuntimeError("embedding server timeout")
+        return [[float(len(t) % 7), 1.0, 0.0, 0.0] for t in texts]
+
+
+def test_failure_partway_through_leaves_db_unchanged(env):
+    con, s, corpus = env
+    (corpus / "a.md").write_text("# A\n\nfirst file content\n")
+    (corpus / "b.md").write_text("# B\n\nsecond file content\n")
+
+    with pytest.raises(RuntimeError):
+        index_corpus(con, s, FailingEmbedder(fail_after=1))
+
+    # a.md would have been inserted successfully before b.md's embed call
+    # raised; the whole run must roll back, not leave a.md half-indexed.
+    assert con.execute("SELECT count(*) FROM documents").fetchone()[0] == 0
+    assert con.execute("SELECT count(*) FROM chunks").fetchone()[0] == 0
+    assert con.execute("SELECT count(*) FROM chunks_vec").fetchone()[0] == 0
