@@ -30,14 +30,26 @@ class SearchRequest(BaseModel):
 def create_app(settings: Settings | None = None, embedder=None) -> FastAPI:
     settings = settings or Settings.from_env()
     embedder = embedder or Embedder(settings)
+
+    # Establish schema once, at startup, not per request. Nothing about the
+    # schema or embed_dim changes during the process's lifetime, so redoing it
+    # on every call only buys a write transaction (create_schema commits an
+    # INSERT into meta) that every /search and /healthz call would then have
+    # to queue behind under WAL's single-writer rule. Doing it here instead
+    # means a dimension mismatch fails loud at startup — a service that starts
+    # and then fails every request is worse than one that refuses to start.
+    con = connect(settings)
+    try:
+        create_schema(con, settings)
+    finally:
+        con.close()
+
     app = FastAPI(title="doink-rag")
 
     def _con():
         # A connection per request: SQLite connections are not thread-safe
         # across FastAPI's threadpool, and opening one is microseconds.
-        con = connect(settings)
-        create_schema(con, settings)
-        return con
+        return connect(settings)
 
     @app.post("/search")
     def do_search(request: SearchRequest):
