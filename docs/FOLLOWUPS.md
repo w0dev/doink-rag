@@ -12,7 +12,7 @@ Measured against 28 verified questions over a 156-chunk corpus of real technical
 notes, using the real embedding model. Full method and numbers in
 [TUNING.md](TUNING.md).
 
-Outcome: `arm_depth` 50 -> **10**; `rrf_k` stays 60, measured to be inert.
+Outcome: `arm_depth` 50 -> **10**; `rrf_k` stays 60, measured flat for k >= 10.
 `arm_depth` was the lever all along — BM25's IDF already ranks stopword-only
 matches low, so truncating the arm removes them before they can vote, and no
 stopword list is needed. Chunk-level fused MRR@10 rose 0.492 -> 0.529 and hit
@@ -66,8 +66,6 @@ per CommonMark and is not a defect.
 
 ## 5. Smaller items
 
-- No unit test for `Settings.from_env()` coercion — env vars are the entire
-  deployment surface Ansible drives, and `int()` coercion is untested.
 - `Embedder.health()` has no test, and it backs `/healthz`, which monitoring
   will consume.
 - No test pins uppercase suffix handling (`.MD`, `.PDF`), though both
@@ -80,5 +78,19 @@ per CommonMark and is not a defect.
 - `heading_path` is indexed by FTS5 but not included in the embedded text.
   Prepending it is a one-line change, but it requires a full re-embed, so it
   belongs with the next re-index rather than as its own event.
-- No explicit tie-break in fusion; ordering falls back to dict insertion order.
-  More likely to bite now that the keyword arm returns wider result sets.
+
+---
+
+## Resolved since this list was written
+
+- **`Settings.from_env()` coercion untested** — `tests/test_config.py` now covers
+  coercion, empty strings, non-numeric values and sub-1 values, all of which
+  raise.
+- **No explicit tie-break in fusion** — `rag.search.fuse()` sorts on
+  `(-score, chunk_id)`. This also removed a class of bug rather than just a
+  wart: the previous implicit tie-break was why an offline sweep and the live
+  service ranked differently.
+- **Sweep tooling was unshipped** — `eval/sweep.py` now lives in the repo and
+  imports production fusion, so `docs/TUNING.md` can actually be regenerated.
+- **Eval could silently shrink its sample** — `evaluate()` raises when a
+  question's phrase no longer resolves to a chunk.
