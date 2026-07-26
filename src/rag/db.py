@@ -6,6 +6,7 @@ an extension, not a service.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 import struct
 
@@ -96,15 +97,24 @@ def create_schema(con: sqlite3.Connection, settings: Settings) -> None:
     # before touching it, or a config drift silently leaves meta and the real
     # table disagreeing until a query fails deep inside vec0 with a confusing
     # dimension error.
-    existing_dim = schema_dim(con)
-    if existing_dim is not None and existing_dim != settings.embed_dim:
-        raise RuntimeError(
-            f"Database at {settings.db_path} was built with embed_dim="
-            f"{existing_dim}, but config specifies embed_dim="
-            f"{settings.embed_dim}. chunks_vec bakes its dimension into its "
-            f"DDL and cannot be resized in place. Changing embedding models "
-            f"requires dropping chunks_vec and re-embedding the corpus."
-        )
+    #
+    # meta.embed_dim is checked first since it's cheap and always present
+    # once create_schema has run, but it's just a bookkeeping row -- nothing
+    # stops it being deleted or edited independently of chunks_vec (manual
+    # meddling, or a database from before this row existed at all). The vec0
+    # DDL itself, read back from sqlite_master, is the second and actually
+    # authoritative source: it's what vec0 really built the table with, and a
+    # mismatch there is exactly the case meta going missing would otherwise
+    # let through silently.
+    for existing_dim in (schema_dim(con), _vec_table_dim(con)):
+        if existing_dim is not None and existing_dim != settings.embed_dim:
+            raise RuntimeError(
+                f"Database at {settings.db_path} was built with embed_dim="
+                f"{existing_dim}, but config specifies embed_dim="
+                f"{settings.embed_dim}. chunks_vec bakes its dimension into its "
+                f"DDL and cannot be resized in place. Changing embedding models "
+                f"requires dropping chunks_vec and re-embedding the corpus."
+            )
     # vec0 bakes the dimension into its DDL, so it cannot be created from a
     # constant. Changing models means dropping this table and re-embedding.
     con.execute(
@@ -122,6 +132,23 @@ def create_schema(con: sqlite3.Connection, settings: Settings) -> None:
 def schema_dim(con: sqlite3.Connection) -> int | None:
     row = con.execute("SELECT value FROM meta WHERE key='embed_dim'").fetchone()
     return int(row[0]) if row else None
+
+
+_VEC_DIM_IN_DDL = re.compile(r"FLOAT\[(\d+)\]")
+
+
+def _vec_table_dim(con: sqlite3.Connection) -> int | None:
+    """Parse the embedding width straight out of chunks_vec's own DDL in
+    sqlite_master, e.g. `...embedding FLOAT[1024])`. This is the width vec0
+    actually built the table with, independent of whatever meta.embed_dim
+    currently claims."""
+    row = con.execute(
+        "SELECT sql FROM sqlite_master WHERE name='chunks_vec' AND type='table'"
+    ).fetchone()
+    if row is None:
+        return None
+    m = _VEC_DIM_IN_DDL.search(row[0])
+    return int(m.group(1)) if m else None
 
 
 def pack_vector(vector: list[float]) -> bytes:

@@ -69,6 +69,20 @@ def test_create_schema_is_noop_when_dimension_matches(con, tmp_path):
     assert schema_dim(con) == 8
 
 
+def test_dimension_mismatch_is_still_caught_when_meta_row_is_missing(con, tmp_path):
+    # meta.embed_dim can go missing independently of chunks_vec -- manual
+    # meddling, or a database from before this guard existed. chunks_vec's
+    # own DDL in sqlite_master is the second, authoritative source and must
+    # catch the mismatch even when meta has nothing to say.
+    con.execute("DELETE FROM meta WHERE key='embed_dim'")
+    con.commit()
+    assert schema_dim(con) is None
+
+    mismatched = Settings(db_path=tmp_path / "t.db", embed_dim=1024)
+    with pytest.raises(RuntimeError, match="1024"):
+        create_schema(con, mismatched)
+
+
 def test_deleting_document_cascades_to_chunks(con):
     con.execute("INSERT INTO documents(id,path,content_hash,mtime,size) "
                 "VALUES (1,'a.md','h',0,0)")
