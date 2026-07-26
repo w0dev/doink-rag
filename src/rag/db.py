@@ -58,6 +58,13 @@ CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
   VALUES (new.id, new.text, new.heading_path);
 END;
 
+-- chunks_vec is a vec0 virtual table, so it is not covered by chunks'
+-- ON DELETE CASCADE from documents. Without this trigger a deleted chunk
+-- leaves an orphaned vector that keeps surfacing in search results forever.
+CREATE TRIGGER IF NOT EXISTS chunks_ad_vec AFTER DELETE ON chunks BEGIN
+  DELETE FROM chunks_vec WHERE chunk_id = old.id;
+END;
+
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
