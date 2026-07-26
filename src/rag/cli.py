@@ -71,6 +71,18 @@ def main(argv: list[str] | None = None) -> int:
             for start in range(0, len(rows), settings.embed_batch):
                 batch = rows[start:start + settings.embed_batch]
                 vectors = embedder.embed_documents([r["text"] for r in batch])
+                if len(vectors) != len(batch):
+                    # Same guard as index.py's _index_file: an unguarded zip
+                    # would silently drop trailing chunks and this path is
+                    # actually worse, since chunks_vec was already wiped above
+                    # -- a short batch here leaves fewer vectors than chunks,
+                    # which stats' mismatch warning would catch eventually,
+                    # but only after the query results have already gone bad.
+                    raise ValueError(
+                        f"embedder returned {len(vectors)} vectors for "
+                        f"{len(batch)} chunks in this batch; refusing to "
+                        f"silently drop the difference"
+                    )
                 for row, vector in zip(batch, vectors):
                     con.execute(
                         "INSERT INTO chunks_vec(chunk_id,embedding) VALUES (?,?)",

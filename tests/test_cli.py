@@ -134,6 +134,43 @@ class _Fake:
         return [1.0, 0.0, 0.0, 0.0]
 
 
+class _ShortEmbedder:
+    """Returns one fewer vector than it was given chunks for -- the same
+    under-supply an unguarded zip in index.py already guards against, here
+    exercised against rebuild-vectors' own zip instead."""
+    def embed_documents(self, texts):
+        return [[1.0, 0.0, 0.0, 0.0] for _ in texts][:-1]
+
+    def embed_query(self, text):
+        return [1.0, 0.0, 0.0, 0.0]
+
+
+def test_rebuild_vectors_short_vector_list_raises_instead_of_silently_dropping_chunks(
+    tmp_path, capsys, monkeypatch
+):
+    corpus = tmp_path / "c"
+    corpus.mkdir()
+    (corpus / "a.md").write_text("# A\n\nalpha alpha alpha\n")
+    (corpus / "b.md").write_text("# B\n\nbravissimo eeeeeee\n")
+    monkeypatch.setenv("RAG_DB_PATH", str(tmp_path / "t.db"))
+    monkeypatch.setenv("RAG_CORPUS_DIR", str(corpus))
+    monkeypatch.setenv("RAG_EMBED_DIM", "4")
+    monkeypatch.setattr("rag.cli._embedder", lambda s: _Fake())
+
+    assert main(["index"]) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr("rag.cli._embedder", lambda s: _ShortEmbedder())
+    assert main(["rebuild-vectors"]) != 0
+    assert capsys.readouterr().err.strip() != ""
+
+    # rebuild-vectors deletes all vectors before re-embedding; a mid-batch
+    # failure must roll back that delete too, not leave the table emptied.
+    settings = Settings(db_path=tmp_path / "t.db", corpus_dir=corpus, embed_dim=4)
+    con = db_connect(settings)
+    assert con.execute("SELECT count(*) FROM chunks_vec").fetchone()[0] == 2
+
+
 def test_sqlite_error_is_reported_cleanly_not_as_a_traceback(tmp_path, capsys, monkeypatch):
     """`except (RuntimeError, ValueError, httpx.HTTPError)` covers embedding
     and dimension failures but not the database itself. Two overlapping `rag
