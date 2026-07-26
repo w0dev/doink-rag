@@ -118,7 +118,40 @@ If the primary consumer turns out to be context injection that only ever reads
 the top 3–5 chunks, **depth 5 is the better setting** and this should be
 revisited. `RAG_ARM_DEPTH=5` needs no code change.
 
-## Result 4 — weighted RRF is not worth it
+## Result 4 — embedding `heading_path` helps the dense arm but not the output
+
+`heading_path` is indexed by FTS5 but was never included in the embedded text,
+so the dense arm could not use it. Prepending it to the text sent for embedding
+(chunk storage and the FTS index unchanged) was measured, not assumed:
+
+| dense arm, by kind | baseline | with heading_path |
+|---|---|---|
+| exact | 0.300 | **0.232** |
+| natural | 0.599 | **0.705** |
+| vocab | 0.333 | **0.451** |
+| ALL | 0.448 | **0.514** |
+
+The dense arm improves 15% overall — and gets materially *worse* at exact
+identifiers, which is already its weakest category. Prepending a heading dilutes
+the literal tokens that category depends on.
+
+Fused output at the shipped settings (`arm_depth=10`) is unchanged:
+
+| | MRR@10 | h@3 | h@5 | h@10 | h@20 |
+|---|---|---|---|---|---|
+| baseline | 0.529 | 0.607 | 0.714 | 0.821 | 0.929 |
+| with heading_path | 0.529 | **0.571** | 0.750 | 0.821 | 0.929 |
+
+**Not shipped.** The arm-level gain does not reach the user: RRF ranks rather
+than scores, and fusion already held those chunks. It costs a full re-embed of
+the corpus, trades away the exact-identifier category, and h@3 is worse.
+
+Worth revisiting only if the arms are ever weighted, if the dense arm is used
+alone, or if a real corpus turns out to be much more heading-dense than this
+one. The experiment is a four-line change to `_index_file` in `src/rag/index.py`
+— prepend `f"{c.heading_path}\n\n{c.text}"` — plus `rag rebuild-vectors`.
+
+## Result 5 — weighted RRF is not worth it
 
 At depth 20, `w_vec=1.5` buys +0.019 MRR and costs h@5 (0.643 vs 0.679).
 `w_kw=2` is worse on MRR. Equal votes are fine; the complexity is not justified.

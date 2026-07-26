@@ -75,11 +75,15 @@ per CommonMark and is not a defect.
   while `chunks_vec` still exists, a mismatched config is accepted and fails
   later as an opaque vec0 error. Reading the declared width from `sqlite_master`
   as a second source would close it.
-- `heading_path` is indexed by FTS5 but not included in the embedded text.
-  Prepending it is a one-line change, but it requires a full re-embed, so it
-  belongs with the next re-index rather than as its own event.
 
 ---
+
+## Measured and rejected
+
+- **Embedding `heading_path`** — improves the dense arm 15% overall but makes it
+  worse at exact identifiers, and leaves fused output unchanged at the shipped
+  settings while making h@3 worse. See TUNING.md Result 4. Revisit only if arm
+  weighting is introduced or a real corpus proves far more heading-dense.
 
 ## Resolved since this list was written
 
