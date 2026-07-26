@@ -1,0 +1,11 @@
+# Each question names the document(s) that should be retrieved. Recall@k asks
+# whether any expected path appears in the top k; MRR rewards ranking it first.
+#
+# These entries are placeholders. Their FORMAT is the deliverable, not their
+# content — there is no real corpus yet to write real questions against. Once
+# personal notes are indexed for real, replace these with actual questions and
+# the paths that should answer them.
+- question: why does the box get slow under memory pressure
+  expect_paths: [architecture.md]
+- question: what terminates TLS for the inference API
+  expect_paths: [architecture.md]
