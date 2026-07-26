@@ -122,6 +122,91 @@ if the new model's dimension differs from the old one, `create_schema` will
 refuse to start until `chunks_vec` is dropped and recreated at the new
 width, which for now means rebuilding the whole database.
 
+## Running the HTTP service
+
+`src/rag/api.py` exposes the same hybrid search as a small FastAPI service.
+Every planned consumer (chat context injection, the family agent harness)
+talks to this one endpoint.
+
+```bash
+uv run uvicorn rag.api:app --factory --host 127.0.0.1 --port 8093
+```
+
+**Pass `--factory`.** `app` in `rag.api` is `create_app`, a function that
+builds and returns the `FastAPI` instance (it reads `Settings`, opens a
+connection, and runs schema setup at call time) -- it is not an app object
+itself. Passing `--factory` tells uvicorn to call it with no arguments and
+use the return value as the ASGI app, which is what `create_app`'s
+`(settings=None, embedder=None)` signature expects.
+
+Recent uvicorn (this project pins `uvicorn>=0.30`) will *auto-detect* a
+zero-arg-callable factory and fall back to using it correctly even without
+`--factory`, only logging a warning
+(`ASGI app factory detected. Using it, but please consider setting the
+--factory flag explicitly.`) -- so omitting the flag is not guaranteed to be
+silently broken on every uvicorn version. Pass it anyway: it is the
+documented, tested contract for running this service, it fails loudly at
+startup instead of relying on a fallback path, and it keeps the systemd unit
+correct if the pinned uvicorn version ever changes.
+
+### `POST /search`
+
+Request body:
+
+```json
+{"query": "why is the box slow under memory pressure", "limit": 10}
+```
+
+`query` is required and must not be blank; `limit` is optional (default 10,
+must be between 1 and 100). A blank or missing `query` returns `422`.
+
+Response body:
+
+```json
+{
+  "query": "why is the box slow under memory pressure",
+  "hits": [
+    {
+      "chunk_id": 42,
+      "score": 0.0328,
+      "text": "full chunk text ...",
+      "heading_path": "Architecture > Memory",
+      "path": "architecture.md",
+      "title": "Architecture"
+    }
+  ]
+}
+```
+
+`hits` is ordered by fused RRF score, descending. `text` is the full chunk
+body, not a snippet.
+
+### `GET /healthz`
+
+```json
+{
+  "documents": 12,
+  "chunks": 340,
+  "vectors": 340,
+  "vectors_complete": true,
+  "embedder": true
+}
+```
+
+`vectors_complete` is `chunks == vectors`; if it is `false`, `rag
+rebuild-vectors` needs to be run (same check as the `stats` CLI command's
+warning). `embedder` is whatever `Embedder.health()` reports for the
+configured embedding server.
+
+### Access control is the bind address, not auth
+
+`/search` returns full note text, and there is no authentication in front of
+it. The bind address is the only access control this service has: it must
+stay on `127.0.0.1` (loopback) and never be given a `--host` that exposes it
+on a LAN or public interface. Reach it from other machines over the tailnet
+via `tailscale serve` (or an equivalent reverse-proxy-over-Tailscale setup)
+pointed at the loopback port, not by rebinding the service itself.
+
 ## Running the evaluation harness
 
 `eval/run_eval.py` measures Recall@k and MRR for the keyword arm, the vector
