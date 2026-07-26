@@ -3,15 +3,16 @@
 Deliberate deferrals with reasoning, not forgotten work. Last reconciled against
 the code 2026-07-26.
 
-Everything that can be settled without your real notes **has been**. What remains
-below needs data this corpus cannot provide.
+Every defect found in review has been fixed. What remains is either **waiting on
+your real notes** (items 1-4) or **scope not yet asked for** (item 5).
 
 ---
 
-## Open — needs the real corpus
+## Open
 
-These are not oversights. Each one's correct answer depends on what your notes
-actually look like, and guessing would be worse than waiting.
+Items 1-4 are not oversights: each one's correct answer depends on what your
+notes actually look like, and guessing would be worse than waiting. Item 5 is
+deliberately unbuilt scope.
 
 ### 1. Re-run the tuning at real scale
 
@@ -50,6 +51,38 @@ Qwen3-Embedding-0.6B was chosen over 4B on measured grounds: 8B does not fit the
 RAM headroom at all, and 4B costs ~7x the CPU per index run for a benchmark gain
 unproven on this corpus. Once real questions exist, `RAG_EMBED_MODEL` plus
 `rag rebuild-vectors` turns that from a judgment into a measurement.
+
+### 5. More source types
+
+Only `.md`, `.markdown`, `.txt` and `.pdf` are indexed today (see the README).
+The scope decisions behind that, from the design spec, plus what has come up
+since:
+
+- **`.html`** — the cheapest meaningful addition. It has real heading structure,
+  so it would get the same structural chunking markdown gets rather than the
+  flat treatment `.txt` receives. Needs a tag-stripping extractor that maps
+  `<h1>`-`<h6>` onto the existing `heading_path` mechanism. No new dependency if
+  `html.parser` is enough; `selectolax` or `beautifulsoup4` if it is not.
+- **`.docx`** — `python-docx` exposes paragraph styles, so `Heading 1`/`Heading
+  2` map cleanly onto `heading_path`. Straightforward, one dependency.
+- **`.epub`** — effectively zipped XHTML, so it mostly falls out of the `.html`
+  work plus a spine reader. Only worth it if you actually keep books here.
+- **Code repositories (v3 in the design)** — deferred because it needs a second
+  chunking strategy, not a second extractor. Splitting code by character count
+  destroys it; chunks need to follow syntax (function and class boundaries),
+  which means a parser per language or tree-sitter. It also argues for a second
+  FTS table using the `trigram` tokenizer, since identifier substring matching
+  is exactly what `porter` stemming is wrong for.
+- **Google Drive (v2 in the design)** — deferred because it is a whole ingestion
+  subsystem rather than a file format: OAuth, a stored refresh token on a box
+  deliberately kept free of `ansible-vault`, rate limits, change detection, and
+  Google-native documents that are not files until exported. The ingestion
+  interface is ready for it — `index_corpus` only ever sees a directory — so the
+  work is entirely in getting content *into* that directory.
+
+Adding a plain format is small: an entry in `SUPPORTED_SUFFIXES` and a branch in
+`extract()`. What makes code repos and Drive different is that neither is a
+format problem.
 
 ---
 

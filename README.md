@@ -50,6 +50,48 @@ uv run rag search "why is the box slow under memory pressure"
 uv run rag stats
 ```
 
+## What gets indexed
+
+`SUPPORTED_SUFFIXES` in `src/rag/extract.py` is the single source of truth:
+
+| Extension | Title from | Text extraction |
+|---|---|---|
+| `.md`, `.markdown` | first `# H1`, else filename stem | UTF-8, `errors="replace"` |
+| `.txt` | filename stem | UTF-8, `errors="replace"` |
+| `.pdf` | filename stem | PyMuPDF, pages joined by blank lines |
+
+Suffix matching is **case-insensitive** — `.MD`, `.PDF`, `.TXT` all index.
+Subdirectories are walked recursively, and `documents.path` stores the path
+relative to `RAG_CORPUS_DIR`.
+
+### Markdown retrieves better than the same content as `.txt` or PDF
+
+This is worth knowing before you decide how to store notes. Chunking splits on
+`#` headings and carries a hierarchical `heading_path` — `Architecture > The
+memory-fit problem` — which is indexed by FTS5 as its own searchable column and
+shown on every hit.
+
+`.txt` and `.pdf` have no headings, so they fall back to paragraph packing at
+`chunk_chars` with an empty `heading_path`. They still work; they just retrieve
+with less signal and give you no provenance beyond the filename.
+
+### Unsupported files are skipped silently
+
+`rag index` filters on the suffix set before extraction, so a `.docx`, `.org` or
+`.png` sitting in your corpus directory is ignored — not an error, and not
+reported. If a document you expected is missing from `rag stats`, check its
+extension first.
+
+(`extract()` itself raises `ValueError` on an unsupported type, but that is a
+programming-error guard for direct callers, not a path `rag index` can reach.)
+
+### PDF caveats
+
+PyMuPDF is materially better than pypdf on real layouts, but extraction is
+page-joined, not layout-aware. Multi-column papers, tables and figure captions
+come out reflowed or interleaved. **There is no OCR**, so a scanned PDF yields
+nothing at all and will index as an empty document.
+
 ## Environment variables
 
 All configuration lives in `src/rag/config.py` (`Settings`); nothing
