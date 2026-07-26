@@ -27,10 +27,16 @@ class Hit:
 
 
 def _sanitise(query: str) -> str:
-    """FTS5 MATCH takes a query language, not a string. User text containing
-    quotes, parentheses or bare AND/OR raises rather than returning nothing, so
-    reduce it to bare terms."""
-    return " ".join(_FTS_SAFE.sub(" ", query).split())
+    """FTS5 MATCH takes a query language, not a string. Stripping punctuation
+    alone is not enough: AND, OR and NOT are ordinary word characters, so a
+    bare "NOT working" still parses as the NOT operator and raises a syntax
+    error rather than matching anything. Quoting each token turns it into a
+    string literal FTS5 cannot read as an operator; adjacent quoted strings
+    are still implicitly ANDed, so ranking over ordinary queries is
+    unchanged. Entirely-punctuation input reduces to no tokens and this
+    still returns ""."""
+    terms = _FTS_SAFE.sub(" ", query).split()
+    return " ".join(f'"{t}"' for t in terms)
 
 
 def keyword_arm(con: sqlite3.Connection, settings: Settings, query: str) -> list[int]:
