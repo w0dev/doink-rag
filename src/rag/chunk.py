@@ -69,28 +69,50 @@ def _split_to_budget(body: str, settings: Settings) -> list[str]:
         return [body]
 
     paragraphs = [p for p in re.split(r"\n\s*\n", body) if p.strip()]
-    units = [
-        piece
-        for para in paragraphs
-        for piece in (
-            [para] if len(para) <= settings.chunk_chars else _wrap_words(para, settings)
-        )
-    ]
-    return _pack(units, settings, joiner="\n\n")
+    return _pack(paragraphs, settings, joiner="\n\n", expand=_wrap_words)
 
 
 def _wrap_words(para: str, settings: Settings) -> list[str]:
     """Split one oversized paragraph on whitespace, same greedy-pack shape."""
-    return _pack(para.split(), settings, joiner=" ")
+    return _pack(para.split(), settings, joiner=" ", expand=_hard_split)
 
 
-def _pack(units: list[str], settings: Settings, joiner: str) -> list[str]:
+def _hard_split(token: str, settings: Settings) -> list[str]:
+    """Slice a single oversized token (URL, hash, base64 blob — no whitespace
+    to wrap on) into budget-sized pieces with a character overlap.
+
+    Mid-token slicing is accepted here: an unbounded chunk is worse than a
+    split URL, and there is no boundary left to prefer.
+    """
+    stride = settings.chunk_chars - settings.chunk_overlap_chars
+    if stride <= 0:
+        stride = settings.chunk_chars  # degenerate settings: no overlap
+    return [
+        token[i : i + settings.chunk_chars]
+        for i in range(0, len(token), stride)
+    ]
+
+
+def _pack(units: list[str], settings: Settings, joiner: str, expand) -> list[str]:
     """Greedily accumulate units up to the budget, carrying a char overlap
     into the next piece so a boundary word/sentence is never orphaned.
+
+    A unit that alone exceeds the budget is handed to `expand`, which returns
+    already-bounded, already-overlapped pieces. Those are appended directly
+    rather than fed back through this same packing loop — re-packing
+    pre-packed pieces would join them with another overlap-and-joiner pass on
+    top of the one `expand` already applied, inflating every piece after the
+    first past the budget.
     """
     pieces: list[str] = []
     current = ""
     for unit in units:
+        if len(unit) > settings.chunk_chars:
+            if current:
+                pieces.append(current)
+                current = ""
+            pieces.extend(expand(unit, settings))
+            continue
         candidate = f"{current}{joiner}{unit}" if current else unit
         if len(candidate) <= settings.chunk_chars or not current:
             current = candidate

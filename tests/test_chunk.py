@@ -40,3 +40,27 @@ def test_plain_text_without_headings_still_chunks():
 
 def test_empty_text_produces_no_chunks():
     assert chunk_text("   \n\n  ", S) == []
+
+
+def test_oversized_paragraph_does_not_double_apply_overlap():
+    # One unbroken paragraph (no blank lines) forces word-level wrapping.
+    # Each wrapped piece already carries its own overlap; re-packing those
+    # pieces at the paragraph level would stack a second overlap on top and
+    # inflate every chunk after the first past the budget.
+    body = " ".join(f"word{i}" for i in range(200))
+    chunks = chunk_text(f"# H\n\n{body}\n", S)
+    assert len(chunks) > 1
+    assert all(
+        len(c.text) <= S.chunk_chars + S.chunk_overlap_chars for c in chunks
+    )
+
+
+def test_single_token_longer_than_budget_is_split():
+    # A long run with no whitespace (URL, hash, base64 blob) has no word
+    # boundary to wrap on, so it must be hard-split instead of emitted whole.
+    token = "x" * (S.chunk_chars * 3)
+    chunks = chunk_text(f"# H\n\n{token}\n", S)
+    assert len(chunks) > 1
+    assert all(
+        len(c.text) <= S.chunk_chars + S.chunk_overlap_chars for c in chunks
+    )
