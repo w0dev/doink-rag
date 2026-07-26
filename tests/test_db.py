@@ -54,6 +54,21 @@ def test_porter_stemming_is_active(con):
     ).fetchone()[0] == 1
 
 
+def test_create_schema_rejects_dimension_mismatch(con, tmp_path):
+    mismatched = Settings(db_path=tmp_path / "t.db", embed_dim=1024)
+    with pytest.raises(RuntimeError, match="1024"):
+        create_schema(con, mismatched)
+    # the on-disk vec table must stay at its original dimension, not silently
+    # drift to whatever the mismatched call asked for
+    assert schema_dim(con) == 8
+
+
+def test_create_schema_is_noop_when_dimension_matches(con, tmp_path):
+    s = Settings(db_path=tmp_path / "t.db", embed_dim=8)
+    create_schema(con, s)  # re-invoking with the same dimension must not raise
+    assert schema_dim(con) == 8
+
+
 def test_deleting_document_cascades_to_chunks(con):
     con.execute("INSERT INTO documents(id,path,content_hash,mtime,size) "
                 "VALUES (1,'a.md','h',0,0)")

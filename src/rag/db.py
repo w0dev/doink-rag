@@ -83,6 +83,20 @@ def connect(settings: Settings) -> sqlite3.Connection:
 
 def create_schema(con: sqlite3.Connection, settings: Settings) -> None:
     con.executescript(SCHEMA)
+    # chunks_vec is CREATE ... IF NOT EXISTS, so once it exists on disk its
+    # baked-in dimension is fixed regardless of what settings says now. Check
+    # before touching it, or a config drift silently leaves meta and the real
+    # table disagreeing until a query fails deep inside vec0 with a confusing
+    # dimension error.
+    existing_dim = schema_dim(con)
+    if existing_dim is not None and existing_dim != settings.embed_dim:
+        raise RuntimeError(
+            f"Database at {settings.db_path} was built with embed_dim="
+            f"{existing_dim}, but config specifies embed_dim="
+            f"{settings.embed_dim}. chunks_vec bakes its dimension into its "
+            f"DDL and cannot be resized in place. Changing embedding models "
+            f"requires dropping chunks_vec and re-embedding the corpus."
+        )
     # vec0 bakes the dimension into its DDL, so it cannot be created from a
     # constant. Changing models means dropping this table and re-embedding.
     con.execute(
