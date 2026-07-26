@@ -93,6 +93,23 @@ def test_keyword_arm_finds_stemmed_match(env):
     assert len(ids) == 1
 
 
+def test_keyword_arm_matches_natural_language_multi_term_query(env):
+    """Every other keyword test in this file uses a single term ("swap",
+    "flarple", "the", "memory") -- that is precisely the blind spot that let
+    an AND-joined query survive eleven prior reviews. Adjacent quoted FTS5
+    strings are implicitly ANDed, so a query built by quoting each term and
+    joining with a bare space requires the chunk to contain *every* term.
+    A real natural-language question almost never does: mem.md contains
+    "swapping" but not the literal word "problem", so under AND this query
+    matches nothing at all, even though it is obviously about the right
+    document. The keyword arm must fall back to OR semantics so any term
+    matching is enough -- exactly what BM25 ranking already assumes when it
+    scores partial matches."""
+    con, s = env
+    ids = keyword_arm(con, s, "why is the repack buffer swapping problem")
+    assert ids, "a natural multi-word question must match via OR, not require every term"
+
+
 def test_search_returns_hits_with_provenance(env):
     con, s = env
     hits = search(con, s, FakeEmbedder(), "swapping")

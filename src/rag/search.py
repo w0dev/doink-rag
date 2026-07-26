@@ -31,12 +31,17 @@ def _sanitise(query: str) -> str:
     alone is not enough: AND, OR and NOT are ordinary word characters, so a
     bare "NOT working" still parses as the NOT operator and raises a syntax
     error rather than matching anything. Quoting each token turns it into a
-    string literal FTS5 cannot read as an operator; adjacent quoted strings
-    are still implicitly ANDed, so ranking over ordinary queries is
-    unchanged. Entirely-punctuation input reduces to no tokens and this
-    still returns ""."""
+    string literal FTS5 cannot read as an operator. Joining with OR (not a
+    bare space) matters just as much: adjacent quoted strings are implicitly
+    ANDed by FTS5, which would require a chunk to contain *every* term in the
+    query -- for any natural-language, multi-word question that is nearly
+    always false, silently zeroing out the keyword arm's contribution while
+    RRF still produces plausible-looking fused scores from the vector arm
+    alone. OR keeps this arm doing what BM25 ranking already assumes: reward
+    partial matches instead of requiring a perfect one. Entirely-punctuation
+    input reduces to no tokens and this still returns ""."""
     terms = _FTS_SAFE.sub(" ", query).split()
-    return " ".join(f'"{t}"' for t in terms)
+    return " OR ".join(f'"{t}"' for t in terms)
 
 
 def keyword_arm(con: sqlite3.Connection, settings: Settings, query: str) -> list[int]:
