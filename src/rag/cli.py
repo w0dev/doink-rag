@@ -7,13 +7,13 @@ rebuilding it, and that will happen every time a model is evaluated.
 from __future__ import annotations
 
 import argparse
-import struct
+import sqlite3
 import sys
 
 import httpx
 
 from .config import Settings
-from .db import connect, create_schema, schema_dim
+from .db import connect, create_schema, pack_vector, schema_dim
 from .embed import Embedder
 from .index import index_corpus
 from .search import search
@@ -88,14 +88,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         return 2
-    except (RuntimeError, ValueError, httpx.HTTPError) as exc:
+    except (RuntimeError, ValueError, httpx.HTTPError, sqlite3.Error) as exc:
         # These are the operational failures a user can act on: the embedding
         # server unreachable or returning the wrong model (httpx.HTTPError,
-        # Embedder's dimension ValueError), or an embed_dim mismatch between
-        # this database and the current config (create_schema's RuntimeError).
-        # Anything not in this set is a programming error and should surface
-        # as a traceback rather than being swallowed here. A mid-batch failure
-        # must not persist: nothing above this point calls commit() until the
+        # Embedder's dimension ValueError), an embed_dim mismatch between
+        # this database and the current config (create_schema's RuntimeError),
+        # or the database itself (sqlite3.Error) -- e.g. "database is locked"
+        # from two overlapping `rag index` runs, or a disk-full write. Anything
+        # not in this set is a programming error and should surface as a
+        # traceback rather than being swallowed here. A mid-batch failure must
+        # not persist: nothing above this point calls commit() until the
         # command finishes, so discarding con without committing leaves the
         # old vectors intact.
         if con is not None:

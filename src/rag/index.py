@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-import struct
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .chunk import chunk_text
 from .config import Settings
+from .db import pack_vector
 from .extract import SUPPORTED_SUFFIXES, extract
 
 
@@ -31,10 +31,6 @@ def _hash(path: Path) -> str:
         for block in iter(lambda: fh.read(1 << 20), b""):
             h.update(block)
     return h.hexdigest()
-
-
-def _pack(vector: list[float]) -> bytes:
-    return struct.pack(f"{len(vector)}f", *vector)
 
 
 def index_corpus(con: sqlite3.Connection, settings: Settings, embedder) -> IndexResult:
@@ -110,5 +106,5 @@ def _index_file(con, settings, embedder, rel: str, path: Path, digest: str) -> N
         )
         con.execute(
             "INSERT INTO chunks_vec(chunk_id,embedding) VALUES (?,?)",
-            (cur.lastrowid, _pack(vector)),
+            (cur.lastrowid, pack_vector(vector)),
         )

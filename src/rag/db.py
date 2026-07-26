@@ -7,6 +7,7 @@ an extension, not a service.
 from __future__ import annotations
 
 import sqlite3
+import struct
 
 from .config import Settings
 
@@ -121,3 +122,16 @@ def create_schema(con: sqlite3.Connection, settings: Settings) -> None:
 def schema_dim(con: sqlite3.Connection) -> int | None:
     row = con.execute("SELECT value FROM meta WHERE key='embed_dim'").fetchone()
     return int(row[0]) if row else None
+
+
+def pack_vector(vector: list[float]) -> bytes:
+    """Pack a vector into the byte layout `chunks_vec`'s FLOAT[N] column
+    expects. This is the single place that decision is made: index.py,
+    search.py and cli.py's rebuild-vectors all write or read this same blob
+    format, and if any of the three disagreed on width or byte order the
+    dense arm would silently return wrong neighbours -- no exception, just
+    bad results. Explicit little-endian (`<Nf`) rather than native order:
+    equivalent on this hardware, but removes the assumption that native order
+    is always little-endian.
+    """
+    return struct.pack(f"<{len(vector)}f", *vector)

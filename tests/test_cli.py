@@ -1,3 +1,4 @@
+import sqlite3
 import struct
 
 from rag.cli import main
@@ -131,3 +132,21 @@ class _Fake:
 
     def embed_query(self, text):
         return [1.0, 0.0, 0.0, 0.0]
+
+
+def test_sqlite_error_is_reported_cleanly_not_as_a_traceback(tmp_path, capsys, monkeypatch):
+    """`except (RuntimeError, ValueError, httpx.HTTPError)` covers embedding
+    and dimension failures but not the database itself. Two overlapping `rag
+    index` runs (plausible if a corpus-sync timer overruns) raise
+    sqlite3.OperationalError: database is locked -- and disk-full does too --
+    which must surface as the same clean `error: ...` path as any other
+    operational failure, not an uncaught traceback."""
+    monkeypatch.setenv("RAG_DB_PATH", str(tmp_path / "t.db"))
+    monkeypatch.setenv("RAG_CORPUS_DIR", str(tmp_path))
+
+    def _raise(*a, **k):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr("rag.cli.index_corpus", _raise)
+    assert main(["index"]) == 1
+    assert "database is locked" in capsys.readouterr().err

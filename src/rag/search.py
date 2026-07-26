@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import struct
 from dataclasses import dataclass
 
 from .config import Settings
+from .db import pack_vector
 
 _FTS_SAFE = re.compile(r'[^\w\s]')
 
@@ -58,7 +58,7 @@ def keyword_arm(con: sqlite3.Connection, settings: Settings, query: str) -> list
 
 def vector_arm(con: sqlite3.Connection, settings: Settings,
                vector: list[float]) -> list[int]:
-    blob = struct.pack(f"{len(vector)}f", *vector)
+    blob = pack_vector(vector)
     rows = con.execute(
         "SELECT chunk_id FROM chunks_vec WHERE embedding MATCH ? AND k = ? "
         "ORDER BY distance",
