@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from rag.config import Settings
 from rag.db import connect, create_schema
@@ -121,6 +123,32 @@ def test_short_vector_list_raises_instead_of_silently_dropping_chunks(env):
     # a partial/mismatched write must not persist -- same all-or-nothing
     # guarantee as any other mid-run failure.
     assert con.execute("SELECT count(*) FROM documents").fetchone()[0] == 0
+
+
+def test_uppercase_suffixes_are_indexed(env):
+    # index.py and extract.py both lowercase the suffix before comparing
+    # against SUPPORTED_SUFFIXES; nothing pinned that end to end before this.
+    con, s, corpus = env
+    (corpus / "A.MD").write_text("# A\n\nmarkdown with an uppercase suffix\n")
+    (corpus / "B.TXT").write_text("plain text with an uppercase suffix\n")
+    r = index_corpus(con, s, FakeEmbedder())
+    assert r.added == 2
+    paths = {row["path"] for row in con.execute("SELECT path FROM documents")}
+    assert paths == {"A.MD", "B.TXT"}
+
+
+def test_nested_subdirectory_corpus_stores_relative_path(env):
+    # rglob finds files at any depth and relative_to derives the stored path
+    # from settings.corpus_dir; nothing pinned that the separators and nesting
+    # survive intact before this.
+    con, s, corpus = env
+    nested = corpus / "sub" / "deep"
+    nested.mkdir(parents=True)
+    (nested / "note.md").write_text("# Note\n\nnested content\n")
+    r = index_corpus(con, s, FakeEmbedder())
+    assert r.added == 1
+    path = con.execute("SELECT path FROM documents").fetchone()["path"]
+    assert path == str(Path("sub") / "deep" / "note.md")
 
 
 def test_failure_partway_through_leaves_db_unchanged(env):

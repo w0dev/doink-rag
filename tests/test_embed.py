@@ -54,3 +54,22 @@ def test_empty_input_makes_no_request():
     e = Embedder(S, client=_client(seen))
     assert e.embed_documents([]) == []
     assert seen == []
+
+
+def test_health_is_true_when_server_responds_200():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/health"
+        return httpx.Response(200)
+    e = Embedder(S, client=httpx.Client(
+        base_url="http://localhost", transport=httpx.MockTransport(handler)))
+    assert e.health() is True
+
+
+def test_health_is_false_when_server_unreachable():
+    # /healthz consumes this directly for monitoring, so the unreachable case
+    # matters as much as the happy path: it must return False, not raise.
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+    e = Embedder(S, client=httpx.Client(
+        base_url="http://localhost", transport=httpx.MockTransport(handler)))
+    assert e.health() is False
