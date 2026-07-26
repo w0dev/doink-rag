@@ -98,6 +98,18 @@ def _index_file(con, settings, embedder, rel: str, path: Path, digest: str) -> N
         return
 
     vectors = embedder.embed_documents([c.text for c in chunks])
+    if len(vectors) != len(chunks):
+        # An unguarded zip(chunks, vectors) would silently drop trailing
+        # chunks whenever the embedder returns too few vectors (a truncated
+        # batch, a filtered-out item). Worse, it drops them in pairs, so
+        # chunks == vectors still holds afterwards -- the exact invariant
+        # `rag stats`' mismatch warning checks -- and that warning can never
+        # catch this class of bug. Fail loudly here instead, before any of
+        # this file's chunks are written.
+        raise ValueError(
+            f"embedder returned {len(vectors)} vectors for {len(chunks)} "
+            f"chunks in {rel!r}; refusing to silently drop the difference"
+        )
     for chunk, vector in zip(chunks, vectors):
         cur = con.execute(
             "INSERT INTO chunks(document_id,ordinal,text,heading_path) "

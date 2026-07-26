@@ -94,6 +94,35 @@ class FailingEmbedder:
         return [[float(len(t) % 7), 1.0, 0.0, 0.0] for t in texts]
 
 
+class ShortEmbedder:
+    """Returns one fewer vector than it was given chunks for -- simulating a
+    provider that silently drops a trailing item (batch truncation, a
+    filtered-out empty string, etc). zip(chunks, vectors) stops at the
+    shorter iterable, so this pairs up correctly for every item it does
+    produce; the mismatch is invisible unless the lengths are checked before
+    zipping."""
+    def embed_documents(self, texts):
+        return [[float(len(t) % 7), 1.0, 0.0, 0.0] for t in texts][:-1]
+
+
+def test_short_vector_list_raises_instead_of_silently_dropping_chunks(env):
+    con, s, corpus = env
+    # Two paragraphs under one heading with a small chunk budget, forced
+    # apart so chunk_text produces more than one chunk for embed_documents to
+    # under-supply vectors for.
+    s = Settings(db_path=s.db_path, corpus_dir=s.corpus_dir, embed_dim=4,
+                 chunk_chars=20, chunk_overlap_chars=2)
+    (corpus / "a.md").write_text(
+        "# A\n\nfirst paragraph is long enough on its own\n\n"
+        "second paragraph is also long enough on its own\n"
+    )
+    with pytest.raises(ValueError):
+        index_corpus(con, s, ShortEmbedder())
+    # a partial/mismatched write must not persist -- same all-or-nothing
+    # guarantee as any other mid-run failure.
+    assert con.execute("SELECT count(*) FROM documents").fetchone()[0] == 0
+
+
 def test_failure_partway_through_leaves_db_unchanged(env):
     con, s, corpus = env
     (corpus / "a.md").write_text("# A\n\nfirst file content\n")
