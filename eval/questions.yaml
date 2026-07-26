@@ -1,11 +1,155 @@
-# Each question names the document(s) that should be retrieved. Recall@k asks
-# whether any expected path appears in the top k; MRR rewards ranking it first.
+# Eval questions over the doink-brain / doink-rag documentation corpus.
 #
-# These entries are placeholders. Their FORMAT is the deliverable, not their
-# content — there is no real corpus yet to write real questions against. Once
-# personal notes are indexed for real, replace these with actual questions and
-# the paths that should answer them.
-- question: why does the box get slow under memory pressure
+# expect_paths   — the document(s) that should be retrieved (document-level recall)
+# expect_phrase  — a distinctive string that must appear in the CORRECT chunk.
+#                  Document-level recall over an 8-document corpus is nearly free;
+#                  chunk-level is where fusion dilution actually shows.
+# kind           — which arm this question is designed to favour, so per-arm
+#                  behaviour can be read rather than guessed:
+#                    vocab   = vocabulary mismatch; the answer uses different
+#                              words than the question (dense should win)
+#                    exact   = literal identifier, flag, or tag (keyword should win)
+#                    natural = ordinary multi-word phrasing (the AND-join failure case)
+
+# ---- vocabulary mismatch: dense arm should carry these ----
+- question: why does the box get slow when memory runs short
   expect_paths: [architecture.md]
-- question: what terminates TLS for the inference API
+  expect_phrase: "memory-fit problem"
+  kind: vocab
+
+- question: what stops the model being pushed out to disk during generation
   expect_paths: [architecture.md]
+  expect_phrase: "no-repack"
+  kind: vocab
+
+- question: why is a graphics card not used for this workload
+  expect_paths: [architecture.md]
+  expect_phrase: "bandwidth-bound"
+  kind: vocab
+
+- question: what makes this model small enough to run at a usable speed
+  expect_paths: [architecture.md]
+  expect_phrase: "MoE shape"
+  kind: vocab
+
+- question: how does anything outside the house reach the service
+  expect_paths: [architecture.md]
+  expect_phrase: "tailscale serve"
+  kind: vocab
+
+- question: what protects against a key someone added behind my back
+  expect_paths: [baseline-hardening-spec.md]
+  expect_phrase: "exclusive"
+  kind: vocab
+
+- question: why is storing everything in one file enough here
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "Qdrant"
+  kind: vocab
+
+- question: what breaks if the served model is swapped without warning
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "rebuild"
+  kind: vocab
+
+# ---- exact identifiers: keyword arm should carry these ----
+- question: b10075
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "b10075"
+  kind: exact
+
+- question: porter unicode61 remove_diacritics
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "porter unicode61"
+  kind: exact
+
+- question: sshd-socket-generator
+  expect_paths: [baseline-hardening-spec.md]
+  expect_phrase: "sshd-socket-generator"
+  kind: exact
+
+- question: Automatic-Reboot-WithUsers
+  expect_paths: [baseline-hardening-spec.md]
+  expect_phrase: "Automatic-Reboot-WithUsers"
+  kind: exact
+
+- question: pooling last
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "pooling last"
+  kind: exact
+
+- question: sqlite-vec vec0
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "vec0"
+  kind: exact
+
+- question: needrestart
+  expect_paths: [baseline-hardening-spec.md]
+  expect_phrase: "needrestart"
+  kind: exact
+
+# ---- natural language: the AND-join failure case ----
+- question: how do I change the ssh port without locking myself out
+  expect_paths: [baseline-hardening-spec.md]
+  expect_phrase: "daemon-reload"
+  kind: natural
+
+- question: what time does the machine reboot to apply patches
+  expect_paths: [baseline-hardening-spec.md]
+  expect_phrase: "04:00"
+  kind: natural
+
+- question: why was the nginx reverse proxy taken off the machine
+  expect_paths: [architecture.md]
+  expect_phrase: "tailnet-zone"
+  kind: natural
+
+- question: what does the lan fallback rule fail to protect against
+  expect_paths: [baseline-hardening-spec.md]
+  expect_phrase: "wlp2s0"
+  kind: natural
+
+- question: which ansible collections are required to run the playbooks
+  expect_paths: [playbooks-readme.md]
+  expect_phrase: "community.general"
+  kind: natural
+
+- question: why was the eight billion parameter embedding model rejected
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "headroom"
+  kind: natural
+
+- question: why is llama-swap not the right tool for this box
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "llama-swap"
+  kind: natural
+
+- question: how do I start the http search service
+  expect_paths: [rag-readme.md]
+  expect_phrase: "factory"
+  kind: natural
+
+- question: what is the reciprocal rank fusion constant set to
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "k=60"
+  kind: natural
+
+- question: why must python come from uv rather than pyenv
+  expect_paths: [rag-readme.md]
+  expect_phrase: "extension"
+  kind: natural
+
+- question: what happens to running processes between a library upgrade and a reboot
+  expect_paths: [architecture.md]
+  expect_phrase: "mapped"
+  kind: natural
+
+- question: how are queries embedded differently from documents
+  expect_paths: [rag-design-spec.md]
+  expect_phrase: "asymmetric"
+  kind: natural
+
+- question: what known problem remains with retrieval tuning
+  expect_paths: [followups.md]
+  expect_phrase: "dilution"
+  kind: natural

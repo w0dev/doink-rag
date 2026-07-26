@@ -62,6 +62,8 @@ downstream hardcodes a value. `Settings.from_env()` reads:
 | `RAG_EMBED_URL`    | `http://127.0.0.1:8092`     | Base URL of the embedding server           |
 | `RAG_EMBED_MODEL`  | `Qwen3-Embedding-0.6B`      | Model name sent in embedding requests      |
 | `RAG_EMBED_DIM`    | `1024`                      | Embedding vector width                     |
+| `RAG_RRF_K` | RRF fusion constant. Default 60, measured inert — see [docs/TUNING.md](docs/TUNING.md). |
+| `RAG_ARM_DEPTH` | Candidates taken from each arm before fusion. Default 10; this is the lever that controls dilution. |
 
 Other tunables (`rrf_k`, `arm_depth`, chunking sizes, the query instruction
 prefix) are constructor defaults on `Settings` rather than env vars — they
@@ -208,6 +210,16 @@ via `tailscale serve` (or an equivalent reverse-proxy-over-Tailscale setup)
 pointed at the loopback port, not by rebinding the service itself.
 
 ## Running the evaluation harness
+
+The shipped `eval/questions.yaml` holds 28 questions over this project's own
+documentation, each with a verified chunk-level ground-truth phrase. It is the
+baseline the current `rrf_k` / `arm_depth` defaults were measured against —
+see [docs/TUNING.md](docs/TUNING.md) for the method, the numbers, and the
+limitations.
+
+Watch the **chunk** columns, not the document ones: document-level recall on a
+small corpus is nearly free and hides a degenerate fused list.
+
 
 `eval/run_eval.py` measures Recall@k and MRR for the keyword arm, the vector
 arm, and the fused result — separately, so that a dead arm or a bad `rrf_k`
