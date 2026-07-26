@@ -62,13 +62,19 @@ downstream hardcodes a value. `Settings.from_env()` reads:
 | `RAG_EMBED_URL`    | `http://127.0.0.1:8092`     | Base URL of the embedding server           |
 | `RAG_EMBED_MODEL`  | `Qwen3-Embedding-0.6B`      | Model name sent in embedding requests      |
 | `RAG_EMBED_DIM`    | `1024`                      | Embedding vector width                     |
-| `RAG_RRF_K` | RRF fusion constant. Default 60, measured inert — see [docs/TUNING.md](docs/TUNING.md). |
-| `RAG_ARM_DEPTH` | Candidates taken from each arm before fusion. Default 10; this is the lever that controls dilution. |
+| `RAG_RRF_K`        | `60`                        | RRF fusion constant. Flat for k ≥ 10       |
+| `RAG_ARM_DEPTH`    | `10`                        | Candidates per arm before fusion           |
 
-Other tunables (`rrf_k`, `arm_depth`, chunking sizes, the query instruction
-prefix) are constructor defaults on `Settings` rather than env vars — they
-are retrieval-quality knobs to tune deliberately via the eval harness below,
-not per-deployment configuration.
+`RAG_RRF_K` and `RAG_ARM_DEPTH` are retrieval-quality knobs rather than
+per-deployment configuration, but they are env-overridable so the eval harness
+can sweep them without editing source. `arm_depth` is the setting that controls
+fusion dilution; [docs/TUNING.md](docs/TUNING.md) covers how the defaults were
+measured and when to revisit them. All the integer variables reject empty,
+non-numeric and sub-1 values loudly — a sweep that silently used a different
+value than it printed would be worse than no sweep.
+
+The remaining tunables (chunking sizes, the query instruction prefix) are
+constructor defaults on `Settings` and are not env vars.
 
 ## Pointing at the box's embedding endpoint over the tailnet
 
@@ -268,7 +274,7 @@ con = connect(settings)
 create_schema(con, settings)
 questions = load_questions(pathlib.Path("eval/questions.yaml"))
 scores = evaluate(con, settings, Embedder(settings), questions, k=10)
-# scores == {"keyword": ArmScore(recall=..., mrr=...), "vector": ..., "fused": ...}
+# scores == {"keyword": ArmScore(recall, mrr, chunk_recall, chunk_mrr), "vector": ..., "fused": ...}
 ```
 
 ## Tests

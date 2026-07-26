@@ -15,9 +15,13 @@ notes, using the real embedding model. Full method and numbers in
 Outcome: `arm_depth` 50 -> **10**; `rrf_k` stays 60, measured to be inert.
 `arm_depth` was the lever all along — BM25's IDF already ranks stopword-only
 matches low, so truncating the arm removes them before they can vote, and no
-stopword list is needed. Chunk-level fused MRR@10 rose 0.495 -> 0.529 and
-recall improved at every k; document recall@10 slipped 1.000 -> 0.964, so it is
-a net win rather than free.
+stopword list is needed. Chunk-level fused MRR@10 rose 0.492 -> 0.529 and hit
+rate improved at every k measured. Document-level scoring was 1.000 for every
+arm and every setting on this corpus, so it discriminated nothing.
+
+`arm_depth=5` scores better still at MRR and at hit rate for k <= 5, but caps
+the candidate pool at 10 and makes three questions unreachable at any depth.
+Picking 10 over 5 is a judgment call at the margin, documented as such.
 
 **Still open from that work:**
 

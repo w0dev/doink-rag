@@ -62,11 +62,14 @@ def _paths_for(con, chunk_ids: list[int]) -> list[str]:
 def _gold_chunks(con, expect_paths: list[str], phrase: str) -> set[int]:
     """Chunk ids in an expected document that contain the distinguishing phrase."""
     placeholders = ",".join("?" * len(expect_paths))
+    # Escape LIKE metacharacters: one '_' in a phrase would silently match any
+    # character and quietly widen the gold set.
+    pattern = "%" + phrase.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
     rows = con.execute(
         f"SELECT c.id FROM chunks c JOIN documents d ON d.id=c.document_id "
         f"WHERE d.path IN ({placeholders}) "
-        f"AND (c.text LIKE ? OR c.heading_path LIKE ?)",
-        [*expect_paths, f"%{phrase}%", f"%{phrase}%"])
+        f"AND (c.text LIKE ? ESCAPE '\\' OR c.heading_path LIKE ? ESCAPE '\\')",
+        [*expect_paths, pattern, pattern])
     return {r["id"] for r in rows}
 
 
@@ -117,12 +120,21 @@ def evaluate(con, settings: Settings, embedder, questions: list[Question],
 
         if q.expect_phrase:
             gold = _gold_chunks(con, q.expect_paths, q.expect_phrase)
-            if gold:
-                chunk_n += 1
-                for name in names:
-                    recall, mrr = _score_ids(id_runs[name], gold)
-                    chunk_totals[name][0] += recall
-                    chunk_totals[name][1] += mrr
+            if not gold:
+                # Dropping it would shrink the denominator while the header still
+                # printed the full question count — the reported score would be
+                # over a different sample than it claimed. This happens when a
+                # corpus document is edited after the question was written.
+                raise ValueError(
+                    f"no chunk in {q.expect_paths} contains {q.expect_phrase!r} "
+                    f"(question: {q.question!r}). The corpus and the questions "
+                    f"have drifted apart; fix the phrase or re-index."
+                )
+            chunk_n += 1
+            for name in names:
+                recall, mrr = _score_ids(id_runs[name], gold)
+                chunk_totals[name][0] += recall
+                chunk_totals[name][1] += mrr
 
     n = max(len(questions), 1)
     cn = max(chunk_n, 1)

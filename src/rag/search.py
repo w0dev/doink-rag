@@ -67,20 +67,36 @@ def vector_arm(con: sqlite3.Connection, settings: Settings,
     return [r[0] for r in rows]
 
 
-def search(con: sqlite3.Connection, settings: Settings, embedder,
-           query: str, limit: int = 10) -> list[Hit]:
-    keyword_ids = keyword_arm(con, settings, query)
-    vector_ids = vector_arm(con, settings, embedder.embed_query(query))
+def fuse(keyword_ids: list[int], vector_ids: list[int],
+         settings: Settings) -> list[tuple[int, float]]:
+    """Reciprocal Rank Fusion: score = sum over arms of 1/(k + rank).
 
-    # Reciprocal Rank Fusion: score = sum over arms of 1/(k + rank). Computed in
-    # Python rather than SQL because both arms are already materialised as small
-    # ranked lists, and the SQL version is harder to read for no gain.
+    Separate from search() so an offline parameter sweep ranks identically to
+    the live service. A sweep with its own copy of this arithmetic silently
+    measures a different ranker — which is exactly what happened during the
+    2026-07-26 tuning run, see docs/TUNING.md.
+
+    Computed in Python rather than SQL because both arms are already
+    materialised as small ranked lists.
+    """
     scores: dict[int, float] = {}
     for ids in (keyword_ids, vector_ids):
         for rank, chunk_id in enumerate(ids, start=1):
             scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (settings.rrf_k + rank)
 
-    ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+    # Ties are common at small arm_depth. A stable sort would break them by dict
+    # insertion order — "whichever arm was iterated first wins" — which is an
+    # accident of the loop above, not a policy. chunk_id as secondary key makes
+    # the order explicit and reproducible.
+    return sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def search(con: sqlite3.Connection, settings: Settings, embedder,
+           query: str, limit: int = 10) -> list[Hit]:
+    keyword_ids = keyword_arm(con, settings, query)
+    vector_ids = vector_arm(con, settings, embedder.embed_query(query))
+
+    ordered = fuse(keyword_ids, vector_ids, settings)[:limit]
     if not ordered:
         return []
 

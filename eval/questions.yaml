@@ -151,5 +151,5 @@
 
 - question: what known problem remains with retrieval tuning
   expect_paths: [followups.md]
-  expect_phrase: "dilution"
+  expect_phrase: "relevance floor"
   kind: natural

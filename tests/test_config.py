@@ -55,3 +55,29 @@ def test_a_non_numeric_override_fails_loudly(monkeypatch):
     monkeypatch.setenv("RAG_ARM_DEPTH", "ten")
     with pytest.raises(ValueError):
         Settings.from_env()
+
+
+def test_empty_string_override_fails_loudly(monkeypatch):
+    """`RAG_ARM_DEPTH=""` silently taking the default is the same class of bug
+    as a non-numeric value: the sweep would report a number for a setting it
+    never used."""
+    monkeypatch.setenv("RAG_ARM_DEPTH", "")
+    with pytest.raises(ValueError):
+        Settings.from_env()
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_values_below_one_are_rejected(monkeypatch, value):
+    """These fail confusingly rather than obviously: arm_depth 0 makes search
+    silently return nothing, and -1 becomes SQLite's 'unlimited' in the keyword
+    arm while the vector arm raises."""
+    monkeypatch.setenv("RAG_ARM_DEPTH", value)
+    with pytest.raises(ValueError, match=">= 1"):
+        Settings.from_env()
+
+
+def test_rrf_k_below_one_is_rejected(monkeypatch):
+    # rrf_k=0 divides by zero on the first rank-0 chunk.
+    monkeypatch.setenv("RAG_RRF_K", "0")
+    with pytest.raises(ValueError, match=">= 1"):
+        Settings.from_env()
