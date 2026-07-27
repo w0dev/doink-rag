@@ -19,6 +19,12 @@ support; `pyenv`'s do not. This is a fact about how each Python was compiled,
 not a preference — do not "fix" this by pointing the project back at a
 `pyenv` interpreter.
 
+**It is not a version question.** pyenv's 3.14.6 and uv's 3.14.6 are the same
+CPython release and behave differently — only the uv build can load
+extensions. A corollary worth knowing: `uv run --python 3.14` will happily
+*reuse* a pyenv 3.14 it finds on PATH and hand you a broken interpreter. Pass
+`--managed-python` when it matters.
+
 `tests/test_environment.py` asserts this precondition directly
 (`test_sqlite_supports_loadable_extensions`, `test_sqlite_vec_loads`) so the
 failure mode is a clear assertion, not a confusing error deep inside `vec0`.
@@ -26,9 +32,14 @@ failure mode is a clear assertion, not a confusing error deep inside `vec0`.
 Run everything through `uv run`, e.g.:
 
 ```bash
-uv run pytest -v
-uv run rag index
+uv run --managed-python pytest -v
+uv run --managed-python rag index
 ```
+
+`.python-version` pins **3.14**, matching the Python the box runs
+(`/usr/bin/python3`, 3.14.4), so development and production are the same major
+version. The box needs no `uv` — its system interpreter already supports
+loadable extensions.
 
 If the bare `uv` on your `PATH` is broken or shadowed, invoke it by absolute
 path instead of changing `.python-version`, `.gitignore`, or `pyproject.toml`
