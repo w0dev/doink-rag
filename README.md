@@ -259,6 +259,27 @@ rebuild-vectors` needs to be run (same check as the `stats` CLI command's
 warning). `embedder` is whatever `Embedder.health()` reports for the
 configured embedding server.
 
+### `GET /documents`
+
+Lists indexed documents: `{"documents": [{"path", "title", "size",
+"indexed_at", "chunks"}, ...]}`.
+
+### `POST /documents`
+
+Multipart upload (`file` field). The file is written flat into `corpus_dir`
+(client-supplied directories are stripped) and the same sync that `rag index`
+runs picks it up, so an uploaded file is indistinguishable from an rsync'd
+one. Returns `{"path", "index": {added, updated, removed, unchanged}}` with
+status 201. Unsupported suffixes are rejected with 422; a file that fails
+indexing (e.g. an unparseable PDF) is removed again so it cannot poison later
+index runs.
+
+### `DELETE /documents/{path}`
+
+Deletes the file from `corpus_dir` (nested paths from rsync are allowed;
+escaping `corpus_dir` is not) and re-syncs the index. 404 if the path does not
+exist.
+
 ### Access control is the bind address, not auth
 
 `/search` returns full note text, and there is no authentication in front of
